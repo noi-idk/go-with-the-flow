@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Go with the Flow</title>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header>
+  <h1>Go with the Flow</h1>
+  <p class="tagline">Tell me your time, budget and mood &mdash; I'll find something live.</p>
+</header>
+
+<main>
+  <section class="chat-pane">
+    <div id="transcript" class="transcript" aria-live="polite"></div>
+
+    <div class="composer">
+      <button id="mic" class="mic" title="Hold a conversation by voice">
+        <span class="mic-dot"></span><span id="mic-label">Talk</span>
+      </button>
+      <input id="text-input" type="text" placeholder="…or type: I have two hours and I'm bored" autocomplete="off" />
+      <button id="send" class="send">Send</button>
+    </div>
+    <div class="row">
+      <label class="speak-toggle"><input id="speak" type="checkbox" checked /> Speak replies</label>
+      <button id="reset" class="link">Start over</button>
+      <span id="status" class="status"></span>
+    </div>
+  </section>
+
+  <aside class="state-pane">
+    <h2>What I know so far</h2>
+    <pre id="state-view">{}</pre>
+    <h2>Recommendations</h2>
+    <div id="cards" class="cards"></div>
+  </aside>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
