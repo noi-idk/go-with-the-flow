@@ -139,7 +139,7 @@ def _price_label(candidate: Candidate) -> str:
         return " (free)"
     if candidate.price_aed is not None:
         return f" (~{candidate.price_aed:g} AED)"
-    return ""
+    return " (price not available)"
 
 
 def make_state(payload: dict[str, Any] | None) -> ConversationState:

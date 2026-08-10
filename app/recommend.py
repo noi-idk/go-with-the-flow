@@ -324,6 +324,11 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
     return score, reasons
 
 
+def has_verified_price(candidate: Candidate) -> bool:
+    """True when we actually read a price (or "free") off the live listing."""
+    return candidate.is_free or candidate.price_aed is not None
+
+
 def _dedupe_key(candidate: Candidate) -> str:
     words = re.findall(r"[a-z0-9]+", candidate.title.lower())
     return " ".join(words[:4])
@@ -359,13 +364,22 @@ def rank(
         over_budget = (
             state.budget_aed is not None and candidate.price_aed is not None and candidate.price_aed > state.budget_aed
         )
+        if state.budget_aed is not None and not has_verified_price(candidate):
+            reasons.insert(0, f"price not available, so I can't promise it fits your {state.budget_aed:g} AED budget")
         (near_misses if over_budget else kept).append(Recommendation(candidate, score, reasons))
 
-    ranked = sorted((r for r in kept if r.score >= MIN_SCORE), key=lambda r: r.score, reverse=True)
-    # "15 things to do in Dubai" is a reading list, not an answer: only use round-ups to fill gaps.
+    # An unconfirmed price never outranks one we checked, and a round-up article never outranks a
+    # named place: sort by those two tiers first, score second.
+    ranked = sorted(
+        (r for r in kept if r.score >= MIN_SCORE),
+        key=lambda r: (
+            0 if has_verified_price(r.candidate) else 1,
+            1 if LISTICLE_RE.search(r.candidate.title) else 0,
+            -r.score,
+        ),
+    )
     specific = [r for r in ranked if not LISTICLE_RE.search(r.candidate.title)]
-    listicles = [r for r in ranked if LISTICLE_RE.search(r.candidate.title)]
-    strong = (specific + listicles)[:top_n] if len(specific) < MIN_SPECIFIC else specific[:top_n]
+    strong = ranked[:top_n] if len(specific) < MIN_SPECIFIC else specific[:top_n]
 
     leftovers = [r for r in ranked if r not in strong]
     fallbacks = sorted(

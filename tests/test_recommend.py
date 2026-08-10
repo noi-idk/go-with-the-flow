@@ -119,6 +119,26 @@ def test_named_places_outrank_roundup_articles():
     assert [r.candidate.title for r in top if "Things to Do" in r.candidate.title] == []
 
 
+def test_verified_prices_outrank_unpriced_ticket_pages():
+    state = ConversationState(location="Dubai", budget_aed=100, environment="outdoor")
+    unpriced = [
+        candidate("LEGOLAND Dubai tickets", "outdoor theme park in Dubai", url="https://lego.ae/x"),
+        candidate("IMG Worlds tickets", "outdoor park in Dubai", url="https://img.ae/x"),
+    ]
+    priced = [
+        candidate("Abra on Dubai Creek", "outdoor boat ride tour in Dubai, ticket AED 20", url="https://abra.ae/x"),
+        candidate("Dubai Frame visit", "outdoor viewpoint walk in Dubai, entry AED 50", url="https://frame.ae/x"),
+        candidate("Al Qudra cycle track", "outdoor cycling trail in Dubai, free entry", url="https://qudra.ae/x"),
+    ]
+    for hit in unpriced + priced:
+        enrich_from_text(hit, hit.text())
+    top, _ = rank(unpriced + priced, state)
+    assert {r.candidate.title for r in top[:3]} == {r.title for r in priced}
+    # Anything we could not price is flagged and pushed below the verified options.
+    for rec in top[3:]:
+        assert rec.reasons[0].startswith("price not available")
+
+
 def test_tight_budget_demotes_unpriced_results():
     cheap = ConversationState(location="Dubai", budget_aed=30)
     generous = ConversationState(location="Dubai", budget_aed=300)

@@ -43,7 +43,7 @@ function renderRecommendations(items) {
   items.forEach((item) => {
     const card = document.createElement("div");
     card.className = "card";
-    const price = item.is_free ? "Free" : item.price_aed != null ? `~${item.price_aed} AED` : "price not listed";
+    const price = item.is_free ? "Free" : item.price_aed != null ? `~${item.price_aed} AED` : "Price not available";
     const hours = item.opening_hours ? ` · ${item.opening_hours}` : "";
     card.innerHTML = `
       <a href="${item.url}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
