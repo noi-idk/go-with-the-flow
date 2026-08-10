@@ -89,6 +89,21 @@ def test_roundup_pages_expand_into_individual_options():
     assert children[1].opening_hours
 
 
+def test_vibe_matches_whole_words_only():
+    state = ConversationState(location="Dubai", vibe="chill", environment="indoor")
+    lounge = candidate("Chillout Ice Lounge Dubai", "indoor ice bar experience")
+    _, reasons = score_candidate(lounge, state)
+    assert not any("chill mood" in reason for reason in reasons)
+
+
+def test_duplicate_venues_appear_once():
+    state = ConversationState(location="Dubai", budget_aed=100, vibe="chill")
+    first = candidate("Chillout Ice Lounge Dubai tickets", "indoor experience", url="https://a.ae/1")
+    second = candidate("Chillout Ice Lounge Dubai 2026 hours", "indoor experience", url="https://b.ae/2")
+    top, near = rank([first, second], state)
+    assert len(top) + len(near) == 1
+
+
 def test_score_reasons_mention_budget_and_vibe():
     state = ConversationState(location="Dubai", budget_aed=100, vibe="chill", environment="outdoor")
     hit = candidate("Relaxing garden walk in Dubai", "calm outdoor park, AED 30 entry")

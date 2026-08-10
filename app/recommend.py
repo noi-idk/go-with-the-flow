@@ -39,6 +39,7 @@ INDOOR_WORDS = [
     "spa",
     "escape room",
     "cafe",
+    "lounge",
     "climbing wall",
     "trampoline",
     "ice rink",
@@ -166,6 +167,14 @@ def _matches(text: str, words: list[str]) -> str | None:
     return None
 
 
+def _matches_word(text: str, words: list[str]) -> str | None:
+    """Whole-word match, so "chill" doesn't fire on a venue called "Chillout Lounge"."""
+    for word in words:
+        if re.search(rf"\b{re.escape(word)}\b", text):
+            return word
+    return None
+
+
 def estimated_duration(text: str) -> float | None:
     for pattern, convert in DURATION_HINTS:
         match = pattern.search(text)
@@ -225,24 +234,23 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
             score += 0.3
 
     # Environment
-    if state.environment == "outdoor":
-        hit = _matches(text, OUTDOOR_WORDS)
+    if state.environment in ("outdoor", "indoor"):
+        wanted, other = (
+            (OUTDOOR_WORDS, INDOOR_WORDS) if state.environment == "outdoor" else (INDOOR_WORDS, OUTDOOR_WORDS)
+        )
+        hit = _matches(text, wanted)
         if hit:
             score += 2.0
-            reasons.append(f"it's outdoors ({hit})")
-        elif _matches(text, INDOOR_WORDS):
-            score -= 1.5
-    elif state.environment == "indoor":
-        hit = _matches(text, INDOOR_WORDS)
-        if hit:
-            score += 2.0
-            reasons.append(f"it's indoors ({hit})")
-        elif _matches(text, OUTDOOR_WORDS):
-            score -= 1.5
+            detail = "" if hit == state.environment else f" ({hit})"
+            reasons.append(f"it's {state.environment}s{detail}")
+        elif _matches(text, other):
+            score -= 2.5
+        else:  # nothing says it is the environment they asked for
+            score -= 0.8
 
     # Vibe
     if state.vibe:
-        hit = _matches(text, VIBE_SYNONYMS.get(state.vibe, [state.vibe]))
+        hit = _matches_word(text, VIBE_SYNONYMS.get(state.vibe, [state.vibe]))
         if hit:
             score += 1.8
             reasons.append(f"matches your {state.vibe} mood")
@@ -290,6 +298,8 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
         score += 0.6
     if len(urlparse(candidate.url).path.strip("/")) < 3:  # a site homepage, not a thing to do
         score -= 1.5
+    if re.search(r"\bhotels?\b", candidate.title.lower()):  # somewhere to sleep, not to spend an afternoon
+        score -= 1.5
 
     if LISTICLE_RE.search(candidate.title):
         score -= 1.6
@@ -300,16 +310,26 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
     return score, reasons
 
 
+def _dedupe_key(candidate: Candidate) -> str:
+    words = re.findall(r"[a-z0-9]+", candidate.title.lower())
+    return " ".join(words[:4])
+
+
 def rank(
     candidates: list[Candidate], state: ConversationState, top_n: int = 5
 ) -> tuple[list[Recommendation], list[Recommendation]]:
     """Return (top recommendations, near-miss fallbacks)."""
     kept: list[Recommendation] = []
     near_misses: list[Recommendation] = []
+    seen: set[str] = set()
 
     for candidate in candidates:
         if is_junk(candidate):
             continue
+        key = _dedupe_key(candidate)
+        if key in seen:  # the same venue surfaced by several queries
+            continue
+        seen.add(key)
         excluded = violates_exclusions(candidate, state)
         score, reasons = score_candidate(candidate, state)
         if excluded:
