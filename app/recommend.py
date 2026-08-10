@@ -135,10 +135,23 @@ ACTIVITY_WORDS = (
     "workshop",
 )
 # Round-up articles are useful context but a poor "go here now" answer.
-LISTICLE_RE = re.compile(r"^\s*(?:top\s*)?\d{1,3}\s|\b(?:things to do|best (?:things|places|activities)|ideas)\b", re.I)
+_PLURALS = r"things|places|activities|attractions|spots|experiences|ideas|adventures"
+LISTICLE_RE = re.compile(
+    r"^\s*(?:top\s*)?\d{1,3}[\s+]|"  # "15 Amazing …"
+    rf"\b\d{{1,3}}\s+(?:\w+\s+){{0,2}}(?:{_PLURALS})\b|"  # "the 10 best outdoor activities"
+    rf"\b(?:top|best)\b(?:\s+\w+){{0,3}}\s+(?:{_PLURALS})\b|"  # "best cheap places"
+    rf"\b(?:{_PLURALS})\s+(?:in|under|near|to do)\b|"  # "attractions under AED 100"
+    r"\b(?:things to do|travel guide|places to visit|guide to)\b",
+    re.I,
+)
+# A tight budget rules out anything whose price we could not confirm.
+TIGHT_BUDGET_AED = 60.0
+MAX_PER_HOST = 2
 
 # Only genuinely matching options get recommended; a few strong picks beat a long list.
 MIN_SCORE = 1.0
+# Below this many named places, round-up articles are allowed to fill the remaining slots.
+MIN_SPECIFIC = 3
 
 DURATION_HINTS = [
     (re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-|to)?\s*hours?\b"), lambda m: float(m.group(1))),
@@ -231,7 +244,8 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
                 score -= 2.5 + min(2.0, (candidate.price_aed - state.budget_aed) / max(state.budget_aed, 1))
                 reasons.append(f"pricier at ~{candidate.price_aed:g} AED")
         else:
-            score += 0.3
+            # An unconfirmed price is a weak answer, and worse the tighter the budget.
+            score -= 1.2 if state.budget_aed <= TIGHT_BUDGET_AED else 0.4
 
     # Environment
     if state.environment in ("outdoor", "indoor"):
@@ -310,6 +324,11 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
     return score, reasons
 
 
+def has_verified_price(candidate: Candidate) -> bool:
+    """True when we actually read a price (or "free") off the live listing."""
+    return candidate.is_free or candidate.price_aed is not None
+
+
 def _dedupe_key(candidate: Candidate) -> str:
     words = re.findall(r"[a-z0-9]+", candidate.title.lower())
     return " ".join(words[:4])
@@ -322,6 +341,7 @@ def rank(
     kept: list[Recommendation] = []
     near_misses: list[Recommendation] = []
     seen: set[str] = set()
+    per_host: dict[str, int] = {}
 
     for candidate in candidates:
         if is_junk(candidate):
@@ -329,7 +349,11 @@ def rank(
         key = _dedupe_key(candidate)
         if key in seen:  # the same venue surfaced by several queries
             continue
+        host = urlparse(candidate.url).netloc.lower()
+        if per_host.get(host, 0) >= MAX_PER_HOST:  # don't hand back one site's article five times
+            continue
         seen.add(key)
+        per_host[host] = per_host.get(host, 0) + 1
         excluded = violates_exclusions(candidate, state)
         score, reasons = score_candidate(candidate, state)
         if excluded:
@@ -340,8 +364,25 @@ def rank(
         over_budget = (
             state.budget_aed is not None and candidate.price_aed is not None and candidate.price_aed > state.budget_aed
         )
+        if state.budget_aed is not None and not has_verified_price(candidate):
+            reasons.insert(0, f"price not available, so I can't promise it fits your {state.budget_aed:g} AED budget")
         (near_misses if over_budget else kept).append(Recommendation(candidate, score, reasons))
 
-    strong = sorted((r for r in kept if r.score >= MIN_SCORE), key=lambda r: r.score, reverse=True)[:top_n]
-    fallbacks = sorted(near_misses + [r for r in kept if r.score < MIN_SCORE], key=lambda r: r.score, reverse=True)
+    # An unconfirmed price never outranks one we checked, and a round-up article never outranks a
+    # named place: sort by those two tiers first, score second.
+    ranked = sorted(
+        (r for r in kept if r.score >= MIN_SCORE),
+        key=lambda r: (
+            0 if has_verified_price(r.candidate) else 1,
+            1 if LISTICLE_RE.search(r.candidate.title) else 0,
+            -r.score,
+        ),
+    )
+    specific = [r for r in ranked if not LISTICLE_RE.search(r.candidate.title)]
+    strong = ranked[:top_n] if len(specific) < MIN_SPECIFIC else specific[:top_n]
+
+    leftovers = [r for r in ranked if r not in strong]
+    fallbacks = sorted(
+        near_misses + leftovers + [r for r in kept if r.score < MIN_SCORE], key=lambda r: r.score, reverse=True
+    )
     return strong, fallbacks[:3]

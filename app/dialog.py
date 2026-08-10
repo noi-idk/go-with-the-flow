@@ -28,6 +28,8 @@ class Session:
     last_prices: list[float] = field(default_factory=list)
     turns: int = 0
     searched_once: bool = False
+    # Kept so a client that isn't driving the turn (the hosted voice agent) can still show results.
+    last_results: list[dict[str, Any]] = field(default_factory=list)
 
 
 class Assistant:
@@ -62,6 +64,7 @@ class Assistant:
         top, near = rank(candidates, state)
         session.searched_once = True
         session.last_prices = [r.candidate.price_aed for r in top if r.candidate.price_aed not in (None, 0)]
+        session.last_results = [r.to_dict() for r in (top or near)]
 
         return {
             "reply": self._present(state, top, near, changes, session),
@@ -136,7 +139,7 @@ def _price_label(candidate: Candidate) -> str:
         return " (free)"
     if candidate.price_aed is not None:
         return f" (~{candidate.price_aed:g} AED)"
-    return ""
+    return " (price not available)"
 
 
 def make_state(payload: dict[str, Any] | None) -> ConversationState:

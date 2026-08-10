@@ -104,6 +104,59 @@ def test_duplicate_venues_appear_once():
     assert len(top) + len(near) == 1
 
 
+def test_named_places_outrank_roundup_articles():
+    state = ConversationState(location="Dubai", budget_aed=100, environment="outdoor")
+    hits = [
+        candidate(f"15 Best Things to Do in Dubai part {i}", "outdoor Dubai AED 40", url=f"https://list{i}.ae/x")
+        for i in range(4)
+    ] + [
+        candidate(name, "outdoor beach walk in Dubai AED 40", url=f"https://{name[:4].lower()}.ae/x")
+        for name in ("Kite Beach paddle", "Al Qudra cycle track", "Dubai Creek abra ride")
+    ]
+    for hit in hits:
+        enrich_from_text(hit, hit.text())
+    top, _ = rank(hits, state)
+    assert [r.candidate.title for r in top if "Things to Do" in r.candidate.title] == []
+
+
+def test_verified_prices_outrank_unpriced_ticket_pages():
+    state = ConversationState(location="Dubai", budget_aed=100, environment="outdoor")
+    unpriced = [
+        candidate("LEGOLAND Dubai tickets", "outdoor theme park in Dubai", url="https://lego.ae/x"),
+        candidate("IMG Worlds tickets", "outdoor park in Dubai", url="https://img.ae/x"),
+    ]
+    priced = [
+        candidate("Abra on Dubai Creek", "outdoor boat ride tour in Dubai, ticket AED 20", url="https://abra.ae/x"),
+        candidate("Dubai Frame visit", "outdoor viewpoint walk in Dubai, entry AED 50", url="https://frame.ae/x"),
+        candidate("Al Qudra cycle track", "outdoor cycling trail in Dubai, free entry", url="https://qudra.ae/x"),
+    ]
+    for hit in unpriced + priced:
+        enrich_from_text(hit, hit.text())
+    top, _ = rank(unpriced + priced, state)
+    assert {r.candidate.title for r in top[:3]} == {r.title for r in priced}
+    # Anything we could not price is flagged and pushed below the verified options.
+    for rec in top[3:]:
+        assert rec.reasons[0].startswith("price not available")
+
+
+def test_tight_budget_demotes_unpriced_results():
+    cheap = ConversationState(location="Dubai", budget_aed=30)
+    generous = ConversationState(location="Dubai", budget_aed=300)
+    unpriced = candidate("Legoland Dubai tickets", "theme park tickets in Dubai")
+    assert score_candidate(unpriced, cheap)[0] < score_candidate(unpriced, generous)[0]
+
+
+def test_one_site_cannot_fill_every_slot():
+    state = ConversationState(location="Dubai", budget_aed=200)
+    hits = [
+        candidate(f"Walk {i} in Dubai", "outdoor tour in Dubai AED 20", url=f"https://few.ae/{i}") for i in range(5)
+    ]
+    for hit in hits:
+        enrich_from_text(hit, hit.text())
+    top, near = rank(hits, state)
+    assert len(top) + len(near) == 2
+
+
 def test_score_reasons_mention_budget_and_vibe():
     state = ConversationState(location="Dubai", budget_aed=100, vibe="chill", environment="outdoor")
     hit = candidate("Relaxing garden walk in Dubai", "calm outdoor park, AED 30 entry")
