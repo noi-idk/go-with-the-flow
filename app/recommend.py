@@ -135,7 +135,14 @@ ACTIVITY_WORDS = (
     "workshop",
 )
 # Round-up articles are useful context but a poor "go here now" answer.
-LISTICLE_RE = re.compile(r"^\s*(?:top\s*)?\d{1,3}\s|\b(?:things to do|best (?:things|places|activities)|ideas)\b", re.I)
+LISTICLE_RE = re.compile(
+    r"^\s*(?:top\s*)?\d{1,3}[\s+]|"
+    r"\b(?:things to do|best (?:things|places|activities)|ideas|travel guide|places to visit|guide to)\b",
+    re.I,
+)
+# A tight budget rules out anything whose price we could not confirm.
+TIGHT_BUDGET_AED = 60.0
+MAX_PER_HOST = 2
 
 # Only genuinely matching options get recommended; a few strong picks beat a long list.
 MIN_SCORE = 1.0
@@ -230,6 +237,8 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
             else:
                 score -= 2.5 + min(2.0, (candidate.price_aed - state.budget_aed) / max(state.budget_aed, 1))
                 reasons.append(f"pricier at ~{candidate.price_aed:g} AED")
+        elif state.budget_aed <= TIGHT_BUDGET_AED:
+            score -= 1.2  # on a tight budget an unconfirmed price is usually a no
         else:
             score += 0.3
 
@@ -322,6 +331,7 @@ def rank(
     kept: list[Recommendation] = []
     near_misses: list[Recommendation] = []
     seen: set[str] = set()
+    per_host: dict[str, int] = {}
 
     for candidate in candidates:
         if is_junk(candidate):
@@ -329,7 +339,11 @@ def rank(
         key = _dedupe_key(candidate)
         if key in seen:  # the same venue surfaced by several queries
             continue
+        host = urlparse(candidate.url).netloc.lower()
+        if per_host.get(host, 0) >= MAX_PER_HOST:  # don't hand back one site's article five times
+            continue
         seen.add(key)
+        per_host[host] = per_host.get(host, 0) + 1
         excluded = violates_exclusions(candidate, state)
         score, reasons = score_candidate(candidate, state)
         if excluded:

@@ -104,6 +104,24 @@ def test_duplicate_venues_appear_once():
     assert len(top) + len(near) == 1
 
 
+def test_tight_budget_demotes_unpriced_results():
+    cheap = ConversationState(location="Dubai", budget_aed=30)
+    generous = ConversationState(location="Dubai", budget_aed=300)
+    unpriced = candidate("Legoland Dubai tickets", "theme park tickets in Dubai")
+    assert score_candidate(unpriced, cheap)[0] < score_candidate(unpriced, generous)[0]
+
+
+def test_one_site_cannot_fill_every_slot():
+    state = ConversationState(location="Dubai", budget_aed=200)
+    hits = [
+        candidate(f"Walk {i} in Dubai", "outdoor tour in Dubai AED 20", url=f"https://few.ae/{i}") for i in range(5)
+    ]
+    for hit in hits:
+        enrich_from_text(hit, hit.text())
+    top, near = rank(hits, state)
+    assert len(top) + len(near) == 2
+
+
 def test_score_reasons_mention_budget_and_vibe():
     state = ConversationState(location="Dubai", budget_aed=100, vibe="chill", environment="outdoor")
     hit = candidate("Relaxing garden walk in Dubai", "calm outdoor park, AED 30 entry")

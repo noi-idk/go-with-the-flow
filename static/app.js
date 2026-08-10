@@ -94,8 +94,9 @@ function stopSpeaking() {
 
 function applyResult(data) {
   bubble("assistant", data.reply);
-  renderState(data.state || {}, data.changed || []);
-  renderRecommendations(data.recommendations || data.alternatives || []);
+  if (data.state) renderState(data.state, data.changed || []);
+  const results = data.recommendations || data.alternatives;
+  if (results) renderRecommendations(results);
   speak(data.reply);
 }
 
@@ -125,6 +126,10 @@ async function send(utterance) {
 
 async function sendAudio(blob) {
   if (busy) return;
+  if (blob.size < 2000) {
+    bubble("assistant", "I didn't catch that — hold the mic a moment longer?");
+    return;
+  }
   busy = true;
   const pending = bubble("assistant", "Listening back…", "pending");
   status.textContent = "transcribing…";

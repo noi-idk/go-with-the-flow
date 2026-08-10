@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Any
 
+import httpx
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -59,13 +60,23 @@ async def voice_turn(
 ) -> dict[str, Any]:
     """Speech in → the same agent as /api/turn → reply text (speak it via /api/speak)."""
     engine = _voice_or_503()
-    transcript = await engine.transcribe(
-        await audio.read(),
-        filename=audio.filename or "speech.webm",
-        content_type=audio.content_type or "audio/webm",
-    )
+    try:
+        transcript = await engine.transcribe(
+            await audio.read(),
+            filename=audio.filename or "speech.webm",
+            content_type=audio.content_type or "audio/webm",
+        )
+    except httpx.HTTPStatusError as error:
+        if error.response.status_code >= 500:
+            raise
+        transcript = ""  # unusable audio, e.g. an accidental tap on the mic button
     if not transcript:
-        return {"transcript": "", "reply": "I didn't catch that — say it again?", "recommendations": []}
+        # No state change, so leave the panel and the previous recommendations alone.
+        return {
+            "transcript": "",
+            "reply": "I didn't catch that — say it again?",
+            "state": assistant.session(session_id).state.to_dict(),
+        }
     result = await assistant.handle(session_id, transcript)
     return {"transcript": transcript, **result}
 

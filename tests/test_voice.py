@@ -1,3 +1,4 @@
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -45,6 +46,32 @@ def test_voice_turn_drives_the_same_agent(voice):
     assert data["searching"] is True
     # The spoken turn lands in the same conversation state the typed API exposes.
     assert client.get("/api/state", params={"session_id": "v1"}).json()["budget_aed"] == 100
+
+
+def test_unusable_audio_keeps_state_and_does_not_crash(voice, monkeypatch):
+    client = TestClient(main.app)
+    client.post(
+        "/api/voice",
+        data={"session_id": "v2"},
+        files={"audio": ("speech.webm", b"fake-audio", "audio/webm")},
+    )
+
+    async def reject(*args, **kwargs):
+        request = httpx.Request("POST", "https://api.elevenlabs.io/v1/speech-to-text")
+        raise httpx.HTTPStatusError("bad audio", request=request, response=httpx.Response(400, request=request))
+
+    monkeypatch.setattr(voice, "transcribe", reject)
+    response = client.post(
+        "/api/voice",
+        data={"session_id": "v2"},
+        files={"audio": ("speech.webm", b"", "audio/webm")},
+    )
+    data = response.json()
+    assert response.status_code == 200
+    assert "didn't catch that" in data["reply"]
+    # The earlier spoken turn is still there, so the UI has nothing to wipe.
+    assert data["state"]["location"] == "Dubai"
+    assert "recommendations" not in data
 
 
 def test_speak_returns_audio(voice):
