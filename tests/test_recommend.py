@@ -104,6 +104,21 @@ def test_duplicate_venues_appear_once():
     assert len(top) + len(near) == 1
 
 
+def test_named_places_outrank_roundup_articles():
+    state = ConversationState(location="Dubai", budget_aed=100, environment="outdoor")
+    hits = [
+        candidate(f"15 Best Things to Do in Dubai part {i}", "outdoor Dubai AED 40", url=f"https://list{i}.ae/x")
+        for i in range(4)
+    ] + [
+        candidate(name, "outdoor beach walk in Dubai AED 40", url=f"https://{name[:4].lower()}.ae/x")
+        for name in ("Kite Beach paddle", "Al Qudra cycle track", "Dubai Creek abra ride")
+    ]
+    for hit in hits:
+        enrich_from_text(hit, hit.text())
+    top, _ = rank(hits, state)
+    assert [r.candidate.title for r in top if "Things to Do" in r.candidate.title] == []
+
+
 def test_tight_budget_demotes_unpriced_results():
     cheap = ConversationState(location="Dubai", budget_aed=30)
     generous = ConversationState(location="Dubai", budget_aed=300)

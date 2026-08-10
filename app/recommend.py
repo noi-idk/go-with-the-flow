@@ -135,9 +135,13 @@ ACTIVITY_WORDS = (
     "workshop",
 )
 # Round-up articles are useful context but a poor "go here now" answer.
+_PLURALS = r"things|places|activities|attractions|spots|experiences|ideas|adventures"
 LISTICLE_RE = re.compile(
-    r"^\s*(?:top\s*)?\d{1,3}[\s+]|"
-    r"\b(?:things to do|best (?:things|places|activities)|ideas|travel guide|places to visit|guide to)\b",
+    r"^\s*(?:top\s*)?\d{1,3}[\s+]|"  # "15 Amazing …"
+    rf"\b\d{{1,3}}\s+(?:\w+\s+){{0,2}}(?:{_PLURALS})\b|"  # "the 10 best outdoor activities"
+    rf"\b(?:top|best)\b(?:\s+\w+){{0,3}}\s+(?:{_PLURALS})\b|"  # "best cheap places"
+    rf"\b(?:{_PLURALS})\s+(?:in|under|near|to do)\b|"  # "attractions under AED 100"
+    r"\b(?:things to do|travel guide|places to visit|guide to)\b",
     re.I,
 )
 # A tight budget rules out anything whose price we could not confirm.
@@ -146,6 +150,8 @@ MAX_PER_HOST = 2
 
 # Only genuinely matching options get recommended; a few strong picks beat a long list.
 MIN_SCORE = 1.0
+# Below this many named places, round-up articles are allowed to fill the remaining slots.
+MIN_SPECIFIC = 3
 
 DURATION_HINTS = [
     (re.compile(r"\b(\d+(?:\.\d+)?)\s*(?:-|to)?\s*hours?\b"), lambda m: float(m.group(1))),
@@ -237,10 +243,9 @@ def score_candidate(candidate: Candidate, state: ConversationState) -> tuple[flo
             else:
                 score -= 2.5 + min(2.0, (candidate.price_aed - state.budget_aed) / max(state.budget_aed, 1))
                 reasons.append(f"pricier at ~{candidate.price_aed:g} AED")
-        elif state.budget_aed <= TIGHT_BUDGET_AED:
-            score -= 1.2  # on a tight budget an unconfirmed price is usually a no
         else:
-            score += 0.3
+            # An unconfirmed price is a weak answer, and worse the tighter the budget.
+            score -= 1.2 if state.budget_aed <= TIGHT_BUDGET_AED else 0.4
 
     # Environment
     if state.environment in ("outdoor", "indoor"):
@@ -356,6 +361,14 @@ def rank(
         )
         (near_misses if over_budget else kept).append(Recommendation(candidate, score, reasons))
 
-    strong = sorted((r for r in kept if r.score >= MIN_SCORE), key=lambda r: r.score, reverse=True)[:top_n]
-    fallbacks = sorted(near_misses + [r for r in kept if r.score < MIN_SCORE], key=lambda r: r.score, reverse=True)
+    ranked = sorted((r for r in kept if r.score >= MIN_SCORE), key=lambda r: r.score, reverse=True)
+    # "15 things to do in Dubai" is a reading list, not an answer: only use round-ups to fill gaps.
+    specific = [r for r in ranked if not LISTICLE_RE.search(r.candidate.title)]
+    listicles = [r for r in ranked if LISTICLE_RE.search(r.candidate.title)]
+    strong = (specific + listicles)[:top_n] if len(specific) < MIN_SPECIFIC else specific[:top_n]
+
+    leftovers = [r for r in ranked if r not in strong]
+    fallbacks = sorted(
+        near_misses + leftovers + [r for r in kept if r.score < MIN_SCORE], key=lambda r: r.score, reverse=True
+    )
     return strong, fallbacks[:3]
