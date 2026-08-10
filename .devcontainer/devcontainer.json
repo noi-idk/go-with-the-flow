@@ -1,0 +1,19 @@
+{
+  "name": "Go with the Flow",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "secrets": {
+    "ELEVENLABS_API_KEY": {
+      "description": "Optional. Enables ElevenLabs speech-to-text and text-to-speech; without it the browser's own speech engine is used.",
+      "documentationUrl": "https://elevenlabs.io/app/settings/api-keys"
+    }
+  },
+  "postCreateCommand": "pip install --user -r requirements.txt",
+  "postAttachCommand": "uvicorn app.main:app --host 0.0.0.0 --port 8000",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "Go with the Flow",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

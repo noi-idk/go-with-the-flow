@@ -12,7 +12,18 @@ You:  Either is fine.       → searches live, returns 3–5 options with prices
 You:  That's too expensive. → keeps every other slot, lowers only the budget, searches again
 ```
 
-## Run it
+## Run it in the browser, no terminal (GitHub Codespaces)
+
+On the repo page: **Code → Codespaces → Create codespace on main**. It installs everything and
+starts the app on port 8000 by itself; the app opens in a new browser tab after about a minute
+(if it doesn't, use the **Ports** tab and click the 🌐 next to port 8000).
+
+For ElevenLabs voice, add your key once at
+[Settings → Codespaces → Secrets](https://github.com/settings/codespaces) as
+`ELEVENLABS_API_KEY` with access to this repository, then create the codespace. Without it the
+app still works using the browser's own speech engine.
+
+## Run it locally
 
 ```bash
 git clone https://github.com/noi-idk/go-with-the-flow && cd go-with-the-flow
