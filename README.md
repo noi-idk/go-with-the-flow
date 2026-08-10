@@ -15,12 +15,30 @@ You:  That's too expensive. → keeps every other slot, lowers only the budget, 
 ## Run it
 
 ```bash
+git clone https://github.com/noi-idk/go-with-the-flow && cd go-with-the-flow
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-export ELEVENLABS_API_KEY=...        # optional, see "Voice" below
-.venv/bin/uvicorn app.main:app --reload --port 8000
+export ELEVENLABS_API_KEY=sk_...     # optional, see "Voice" below
+.venv/bin/uvicorn app.main:app --port 8000
 ```
 
-Open http://localhost:8000, hit **Talk** and speak. Typing works too.
+Open http://localhost:8000, hit **Talk**, speak, and allow the microphone when the browser
+asks. Typing works too, in the same conversation. `GET /api/health` shows which backends
+are live.
+
+### Environment variables
+
+Nothing is required — with no variables at all the app runs on keyless DuckDuckGo search
+and the browser's own speech engine.
+
+| Variable | Required? | What it does |
+| --- | --- | --- |
+| `ELEVENLABS_API_KEY` | Recommended | Turns on ElevenLabs Scribe speech-to-text and TTS. Without it the UI uses the browser's Web Speech API and `/api/voice` + `/api/speak` return 503 |
+| `ELEVENLABS_VOICE_ID` | Optional | Which voice speaks the replies (default `21m00Tcm4TlvDq8ikWAM`) |
+| `ELEVENLABS_STT_MODEL` | Optional | Speech-to-text model (default `scribe_v1`) |
+| `ELEVENLABS_TTS_MODEL` | Optional | Text-to-speech model (default `eleven_flash_v2_5`) |
+| `ELEVENLABS_AGENT_ID` | Optional | Enables the hosted-agent **Live call** button; needs a key with the `convai_read`/`convai_write` permissions |
+| `SEARCH_PROVIDER` | Optional | `tavily`, `serper` or `brave`; otherwise auto-detected from the keys below, falling back to keyless DuckDuckGo |
+| `TAVILY_API_KEY` / `SERPER_API_KEY` / `BRAVE_API_KEY` | Optional | Upgrade live search from DuckDuckGo to a paid API |
 
 ## Voice
 
@@ -57,21 +75,15 @@ cards follow the call by polling `GET /api/session`.
 | State | `app/state.py` | The slots (`location`, `free_time_hours`, `budget_aed`, `exclusions`, `vibe`, `environment` + optional extras) and when there's enough to search |
 | Extraction & refinement | `app/extraction.py` | Pulls slots out of natural speech; refinements ("too expensive", "closer", "more active", "less time") change *only* the slot they refer to |
 | Live search | `app/search.py` | Builds queries from the current state, hits a live search backend, then fetches pages to confirm price / opening hours; round-up articles are expanded into individual, priceable suggestions |
-| Ranking | `app/recommend.py` | Scores each live hit on budget, environment, vibe, duration, location and live-info quality; drops exclusions and junk; returns the top 3–5 with reasons |
+| Ranking | `app/recommend.py` | Scores each live hit on budget, environment, vibe, duration, location and live-info quality; drops exclusions and junk; named places beat round-up articles and verified prices beat "price not available"; returns the top 3–5 with reasons |
 | Hosted agent | `app/convai.py` | Webhook tool + prompt for an ElevenLabs Agent, so the hosted voice agent delegates every turn back to this engine |
 | Voice | `app/voice.py` | ElevenLabs speech-to-text and text-to-speech; a thin adapter around the agent, not a second conversation engine |
 | Dialogue | `app/dialog.py` | Asks only for what's missing, then searches; keeps state across turns |
 
 Nothing is hardcoded: every recommendation comes from a live query made at the moment you ask.
 
-### Search backends
-
-Keyless by default (DuckDuckGo via `ddgs`). Set one of these to upgrade:
-
-```bash
-export TAVILY_API_KEY=...    # or SERPER_API_KEY / BRAVE_API_KEY
-export SEARCH_PROVIDER=tavily  # optional, otherwise auto-detected
-```
+Live search is keyless by default (DuckDuckGo via `ddgs`), so a search turn takes 20–45
+seconds while it fetches and verifies pages.
 
 ## API
 
