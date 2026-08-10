@@ -12,9 +12,11 @@ import os
 import httpx
 
 API_ROOT = "https://api.elevenlabs.io/v1"
-DEFAULT_VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # "Rachel", a natural conversational voice
+DEFAULT_VOICE_ID = "cgSgspJ2msm6clMCkdW9"  # "Jessica", warm and conversational
 DEFAULT_STT_MODEL = "scribe_v1"
-DEFAULT_TTS_MODEL = "eleven_flash_v2_5"  # low latency, which matters in a live conversation
+# The most natural model. It costs about a second more than the flash model, which is
+# nothing next to the live search the reply is waiting on anyway.
+DEFAULT_TTS_MODEL = "eleven_multilingual_v2"
 TIMEOUT = 60.0
 
 
@@ -51,7 +53,12 @@ class ElevenLabsVoice:
                 json={
                     "text": text,
                     "model_id": os.getenv("ELEVENLABS_TTS_MODEL", DEFAULT_TTS_MODEL),
-                    "voice_settings": {"stability": 0.4, "similarity_boost": 0.7, "speed": 1.05},
+                    "voice_settings": {
+                        "stability": 0.45,
+                        "similarity_boost": 0.8,
+                        "style": 0.3,  # a little expression, so it sounds like a friend, not a kiosk
+                        "use_speaker_boost": True,
+                    },
                 },
             )
         response.raise_for_status()
