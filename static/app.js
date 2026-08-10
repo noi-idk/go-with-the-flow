@@ -15,6 +15,9 @@ let listening = false;
 let busy = false;
 let voiceBackend = "browser";
 let player = null;
+let callPoll = null;
+// The hosted agent posts turns to /api/convai/turn, which defaults to this session id.
+const CALL_SESSION = "convai";
 
 function bubble(role, text, className = "") {
   const node = document.createElement("div");
@@ -226,16 +229,57 @@ document.getElementById("reset").addEventListener("click", async () => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId }),
   });
+  if (callPoll) {
+    clearInterval(callPoll);
+    callPoll = null;
+  }
+  await fetch("/api/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: CALL_SESSION }),
+  });
   transcript.innerHTML = "";
   cards.innerHTML = "";
   stateView.textContent = "{}";
   bubble("assistant", "Fresh start. What are you in the mood for?");
 });
 
+async function startCall() {
+  const config = await (await fetch("/api/convai/session")).json();
+  const widget = document.createElement("elevenlabs-convai");
+  if (config.signed_url) widget.setAttribute("signed-url", config.signed_url);
+  else widget.setAttribute("agent-id", config.agent_id);
+  widget.setAttribute("variant", "expanded");
+  document.body.appendChild(widget);
+
+  const script = document.createElement("script");
+  script.src = "https://unpkg.com/@elevenlabs/convai-widget-embed";
+  script.async = true;
+  document.body.appendChild(script);
+
+  bubble("assistant", "Live call open — talk to the agent; I'll mirror what it learns here.");
+  // The agent drives the conversation, so follow the engine's session instead of posting turns.
+  callPoll = setInterval(async () => {
+    const snapshot = await (await fetch(`/api/session?session_id=${CALL_SESSION}`)).json();
+    renderState(snapshot.state || {});
+    if (snapshot.recommendations?.length) renderRecommendations(snapshot.recommendations);
+  }, 2000);
+}
+
+document.getElementById("call").addEventListener("click", () => {
+  const button = document.getElementById("call");
+  button.disabled = true;
+  startCall().catch((error) => {
+    button.disabled = false;
+    bubble("assistant", `Couldn't open the call: ${error.message}`);
+  });
+});
+
 async function detectVoiceBackend() {
   try {
     const health = await (await fetch("/api/health")).json();
     voiceBackend = health.voice_backend || "browser";
+    if (health.convai_agent) document.getElementById("call").hidden = false;
   } catch (error) {
     voiceBackend = "browser";
   }

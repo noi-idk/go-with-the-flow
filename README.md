@@ -34,6 +34,22 @@ Without a key the UI falls back to the browser's Web Speech API, and `/api/voice
 `/api/speak` return 503. Override the voice or models with `ELEVENLABS_VOICE_ID`,
 `ELEVENLABS_STT_MODEL`, `ELEVENLABS_TTS_MODEL`.
 
+### Hosted ElevenLabs agent (optional)
+
+An ElevenLabs Agent can front the conversation instead of the record-and-send mic, while the
+engine here stays authoritative: the agent does speech and turn-taking only, and calls
+`POST /api/convai/turn` on *every* user turn, speaking whatever `reply` comes back.
+
+```bash
+export ELEVENLABS_AGENT_ID=agent_...
+python scripts/setup_convai_agent.py https://your-public-host   # installs the webhook tool + prompt
+```
+
+ElevenLabs calls the webhook from its own servers, so the base URL must be publicly reachable
+(use a tunnel in development) and the API key needs the `convai_read`/`convai_write`
+permissions. Once configured, a **Live call** button appears in the UI and the state panel and
+cards follow the call by polling `GET /api/session`.
+
 ## How it works
 
 | Layer | File | Responsibility |
@@ -42,6 +58,7 @@ Without a key the UI falls back to the browser's Web Speech API, and `/api/voice
 | Extraction & refinement | `app/extraction.py` | Pulls slots out of natural speech; refinements ("too expensive", "closer", "more active", "less time") change *only* the slot they refer to |
 | Live search | `app/search.py` | Builds queries from the current state, hits a live search backend, then fetches pages to confirm price / opening hours; round-up articles are expanded into individual, priceable suggestions |
 | Ranking | `app/recommend.py` | Scores each live hit on budget, environment, vibe, duration, location and live-info quality; drops exclusions and junk; returns the top 3–5 with reasons |
+| Hosted agent | `app/convai.py` | Webhook tool + prompt for an ElevenLabs Agent, so the hosted voice agent delegates every turn back to this engine |
 | Voice | `app/voice.py` | ElevenLabs speech-to-text and text-to-speech; a thin adapter around the agent, not a second conversation engine |
 | Dialogue | `app/dialog.py` | Asks only for what's missing, then searches; keeps state across turns |
 
@@ -63,7 +80,10 @@ export SEARCH_PROVIDER=tavily  # optional, otherwise auto-detected
 | `POST /api/turn` | `{session_id, utterance}` → `{reply, state, recommendations, changed}` |
 | `POST /api/voice` | multipart `audio` + `session_id` → the same payload plus the `transcript` |
 | `POST /api/speak` | `{text}` → `audio/mpeg` of the spoken reply |
+| `POST /api/convai/turn` | Webhook for the hosted agent: `{utterance, session_id}` → `{reply, state, recommendations}` |
+| `GET /api/convai/session` | Agent id and a signed URL for the browser widget |
 | `GET /api/state` | Current slots for a session |
+| `GET /api/session` | Slots plus the last results, for following a hosted call |
 | `POST /api/reset` | Start over |
 | `GET /api/health` | Which search backend is live |
 

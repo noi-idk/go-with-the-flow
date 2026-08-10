@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .convai import get_client
 from .dialog import Assistant, make_state
 from .search import get_backend
 from .voice import VoiceUnavailable, get_voice, require_voice
@@ -35,6 +36,11 @@ class SpeakRequest(BaseModel):
     text: str
 
 
+class ConvAITurnRequest(BaseModel):
+    utterance: str
+    session_id: str = "convai"
+
+
 @app.post("/api/turn")
 async def turn(request: TurnRequest) -> dict[str, Any]:
     if request.state is not None:
@@ -45,6 +51,17 @@ async def turn(request: TurnRequest) -> dict[str, Any]:
 @app.get("/api/state")
 async def get_state(session_id: str = "default") -> dict[str, Any]:
     return assistant.session(session_id).state.to_dict()
+
+
+@app.get("/api/session")
+async def session_snapshot(session_id: str = "default") -> dict[str, Any]:
+    """State plus the last results — how the UI follows along during a hosted voice call."""
+    session = assistant.session(session_id)
+    return {
+        "state": session.state.to_dict(),
+        "recommendations": session.last_results,
+        "turns": session.turns,
+    }
 
 
 @app.post("/api/reset")
@@ -87,12 +104,51 @@ async def speak(request: SpeakRequest) -> Response:
     return Response(content=audio, media_type="audio/mpeg")
 
 
+@app.post("/api/convai/turn")
+async def convai_turn(request: ConvAITurnRequest) -> dict[str, Any]:
+    """Webhook the hosted ElevenLabs agent calls on every user turn.
+
+    It is a thin wrapper over the same assistant: the agent speaks `reply` and never
+    holds any conversation state of its own.
+    """
+    result = await assistant.handle(request.session_id, request.utterance)
+    return {
+        "reply": result["reply"],
+        "state": result["state"],
+        "recommendations": [
+            {
+                "title": rec["title"],
+                "why": rec["why"],
+                "price_aed": rec["price_aed"],
+                "is_free": rec["is_free"],
+                "opening_hours": rec["opening_hours"],
+                "url": rec["url"],
+            }
+            for rec in result.get("recommendations", [])
+        ],
+    }
+
+
+@app.get("/api/convai/session")
+async def convai_session() -> dict[str, Any]:
+    """What the browser widget needs to open a call with the hosted agent."""
+    client = get_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_AGENT_ID is not set")
+    try:
+        return {"agent_id": client.agent_id, "signed_url": await client.signed_url()}
+    except httpx.HTTPStatusError as error:
+        # A public agent needs no signed URL, and the key may lack convai_read.
+        return {"agent_id": client.agent_id, "signed_url": None, "detail": error.response.text[:200]}
+
+
 @app.get("/api/health")
 async def health() -> dict[str, str]:
     return {
         "status": "ok",
         "search_backend": get_backend().__class__.__name__,
         "voice_backend": "elevenlabs" if get_voice() else "browser",
+        "convai_agent": (get_client().agent_id if get_client() else ""),
     }
 
 
