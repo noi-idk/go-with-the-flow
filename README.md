@@ -16,11 +16,23 @@ You:  That's too expensive. → keeps every other slot, lowers only the budget, 
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+export ELEVENLABS_API_KEY=...        # optional, see "Voice" below
 .venv/bin/uvicorn app.main:app --reload --port 8000
 ```
 
-Open http://localhost:8000, hit **Talk** and speak (Chrome/Edge — the browser's Web Speech
-API handles speech-to-text and the reply is spoken back). Typing works too.
+Open http://localhost:8000, hit **Talk** and speak. Typing works too.
+
+## Voice
+
+With `ELEVENLABS_API_KEY` set, the browser records your mic and posts it to `/api/voice`,
+which runs ElevenLabs Scribe speech-to-text, feeds the transcript to the *same* agent the
+typed `/api/turn` endpoint uses, and the reply is spoken by ElevenLabs via `/api/speak`.
+The voice layer only moves audio in and out — conversation state and slot logic are
+untouched by it, so a spoken turn and a typed turn are indistinguishable to the agent.
+
+Without a key the UI falls back to the browser's Web Speech API, and `/api/voice` and
+`/api/speak` return 503. Override the voice or models with `ELEVENLABS_VOICE_ID`,
+`ELEVENLABS_STT_MODEL`, `ELEVENLABS_TTS_MODEL`.
 
 ## How it works
 
@@ -30,6 +42,7 @@ API handles speech-to-text and the reply is spoken back). Typing works too.
 | Extraction & refinement | `app/extraction.py` | Pulls slots out of natural speech; refinements ("too expensive", "closer", "more active", "less time") change *only* the slot they refer to |
 | Live search | `app/search.py` | Builds queries from the current state, hits a live search backend, then fetches pages to confirm price / opening hours; round-up articles are expanded into individual, priceable suggestions |
 | Ranking | `app/recommend.py` | Scores each live hit on budget, environment, vibe, duration, location and live-info quality; drops exclusions and junk; returns the top 3–5 with reasons |
+| Voice | `app/voice.py` | ElevenLabs speech-to-text and text-to-speech; a thin adapter around the agent, not a second conversation engine |
 | Dialogue | `app/dialog.py` | Asks only for what's missing, then searches; keeps state across turns |
 
 Nothing is hardcoded: every recommendation comes from a live query made at the moment you ask.
@@ -48,6 +61,8 @@ export SEARCH_PROVIDER=tavily  # optional, otherwise auto-detected
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/turn` | `{session_id, utterance}` → `{reply, state, recommendations, changed}` |
+| `POST /api/voice` | multipart `audio` + `session_id` → the same payload plus the `transcript` |
+| `POST /api/speak` | `{text}` → `audio/mpeg` of the spoken reply |
 | `GET /api/state` | Current slots for a session |
 | `POST /api/reset` | Start over |
 | `GET /api/health` | Which search backend is live |
