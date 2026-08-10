@@ -73,7 +73,6 @@ class Assistant:
             "alternatives": [r.to_dict() for r in near] if not top else [],
             "changed": changes,
             "searching": True,
-            "queries_used": sorted({c.query for c in candidates}),
         }
 
     def _ask(
