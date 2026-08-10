@@ -44,9 +44,9 @@ and the browser's own speech engine.
 | Variable | Required? | What it does |
 | --- | --- | --- |
 | `ELEVENLABS_API_KEY` | Recommended | Turns on ElevenLabs Scribe speech-to-text and TTS. Without it the UI uses the browser's Web Speech API and `/api/voice` + `/api/speak` return 503 |
-| `ELEVENLABS_VOICE_ID` | Optional | Which voice speaks the replies (default `21m00Tcm4TlvDq8ikWAM`) |
+| `ELEVENLABS_VOICE_ID` | Optional | Which voice speaks the replies (default `cgSgspJ2msm6clMCkdW9`, "Jessica" — see "Changing the voice") |
 | `ELEVENLABS_STT_MODEL` | Optional | Speech-to-text model (default `scribe_v1`) |
-| `ELEVENLABS_TTS_MODEL` | Optional | Text-to-speech model (default `eleven_flash_v2_5`) |
+| `ELEVENLABS_TTS_MODEL` | Optional | Text-to-speech model (default `eleven_multilingual_v2`, the most natural one; `eleven_flash_v2_5` is ~1s faster but flatter) |
 | `ELEVENLABS_AGENT_ID` | Optional | Enables the hosted-agent **Live call** button; needs a key with the `convai_read`/`convai_write` permissions |
 | `SEARCH_PROVIDER` | Optional | `tavily`, `serper` or `brave`; otherwise auto-detected from the keys below, falling back to keyless DuckDuckGo |
 | `TAVILY_API_KEY` / `SERPER_API_KEY` / `BRAVE_API_KEY` | Optional | Upgrade live search from DuckDuckGo to a paid API |
@@ -62,6 +62,24 @@ untouched by it, so a spoken turn and a typed turn are indistinguishable to the 
 Without a key the UI falls back to the browser's Web Speech API, and `/api/voice` and
 `/api/speak` return 503. Override the voice or models with `ELEVENLABS_VOICE_ID`,
 `ELEVENLABS_STT_MODEL`, `ELEVENLABS_TTS_MODEL`.
+
+### Changing the voice
+
+Set `ELEVENLABS_VOICE_ID` to any voice ID from your ElevenLabs
+[voice library](https://elevenlabs.io/app/voice-library) — no code change needed. Some
+premade voices that suit a friendly activity guide:
+
+| Voice | ID | Character |
+| --- | --- | --- |
+| Jessica *(default)* | `cgSgspJ2msm6clMCkdW9` | Warm, upbeat, conversational |
+| Sarah | `EXAVITQu4vr4xnSDxMaL` | Soft, calm, professional |
+| Lily | `pFZP5JQG7iQjIQuC4Bku` | Bright British |
+| Alice | `Xb7hH8MSUJpSbSDYk0k2` | Confident British |
+| Brian | `nPczCjzI2devNBz1zQrb` | Deep, friendly male |
+
+```bash
+export ELEVENLABS_VOICE_ID=EXAVITQu4vr4xnSDxMaL
+```
 
 ### Hosted ElevenLabs agent (optional)
 

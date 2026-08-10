@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 import app.dialog as dialog
 import app.main as main
 from app.search import Candidate, enrich_from_text
-from app.voice import ElevenLabsVoice
+from app.voice import DEFAULT_VOICE_ID, ElevenLabsVoice
 
 
 class FakeVoice(ElevenLabsVoice):
@@ -84,6 +84,13 @@ def test_speak_returns_audio(voice):
 
 def test_health_reports_voice_backend(voice):
     assert TestClient(main.app).get("/api/health").json()["voice_backend"] == "elevenlabs"
+
+
+def test_voice_id_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_VOICE_ID", "my-own-voice")
+    assert ElevenLabsVoice(api_key="test-key").voice_id == "my-own-voice"
+    monkeypatch.delenv("ELEVENLABS_VOICE_ID")
+    assert ElevenLabsVoice(api_key="test-key").voice_id == DEFAULT_VOICE_ID
 
 
 def test_voice_disabled_without_key(monkeypatch):
